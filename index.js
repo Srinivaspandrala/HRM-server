@@ -10,10 +10,10 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json()); 
 
 const db = new sqlite3.Database("HRMdb.db", (err) => {
     if (err) {
@@ -24,19 +24,37 @@ const db = new sqlite3.Database("HRMdb.db", (err) => {
         db.run(`
             CREATE TABLE IF NOT EXISTS Employee (
                 EmpolyeeID INTEGER PRIMARY KEY AUTOINCREMENT,
-                FullName TEXT NOT NULL,
-                WorkEmail TEXT NOT NULL,
-                Company TEXT NOT NULL,
-                DateOfBirth DATE,
+                FullName VARCHAR(24) NOT NULL,
+                WorkEmail VARCHAR(32) UNIQUE NOT NULL,
+                Company VARCHAR NOT NULL,
+                Gender VARCHAR NOT NULL,
+                DateOfBirth DATE ,
                 Country TEXT NOT NULL,
                 About_Yourself TEXT NOT NULL,
-                Password TEXT NOT NULL
+                Password UNIQUE NOT NULL
             )
-        `);
-    }
-});
 
-// Nodemailer transporter
+        `);
+        db.run(`CREATE TABLE IF NOT EXISTS AttendanceLog (
+            AttendanceLogID INTEGER PRIMARY KEY AUTOINCREMENT,
+            WorkEmail VARCHAR(32) NOT NULL,
+            Logdate DATE NOT NULL,
+            LogTime TIME NOT NULL,
+            EffectiveHours TEXT NOT NULL,
+            GrossHours TEXT NOT NULL,
+            ArrivalStatus TEXT NOT NULL,
+            LeaveStatus TEXT NOT NULL,
+            Logstatus TEXT NOT NUll,
+            FOREIGN KEY (WorkEmail) REFERENCES Employee(WorkEmail)
+        )`);
+
+        
+    }
+    
+});
+db.run('PRAGMA foreign_keys = ON',) // forgin key ON
+
+//mail transport and service,user and passkey used from env file
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -45,9 +63,9 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// Generate a random password
+// random password genterator
 const generateRandomPassword = () => {
-    return Math.random().toString(36).slice(-8); // 8-character random password
+    return Math.random().toString(36).slice(-8); 
 };
 
 //middleware 
@@ -70,12 +88,11 @@ const authenticatetoken = (req, res, next) => {
 
 //End API Signup
 
-
-
+//signup API
 app.post("/signup", async (req, res) => {
-    const { fullname, email, company, dateofbirth, country, Aboutyourself } = req.body;
+    const { fullname, email, company,gender,dateofbirth, country, Aboutyourself } = req.body;
 
-    if (!fullname || !email || !company || !dateofbirth || !country || !Aboutyourself) {
+    if (!fullname || !email || !company || !gender || !dateofbirth || !country || !Aboutyourself) {
         return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -84,9 +101,9 @@ app.post("/signup", async (req, res) => {
     try {
         const hashedPassword = await bcrypt.hash(randomPassword, 8);
 
-        const insertQuery = `INSERT INTO Employee (FullName, WorkEmail, Company, DateOfBirth, Country, About_Yourself, Password) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+        const insertQuery = `INSERT INTO Employee (FullName, WorkEmail, Company,Gender, DateOfBirth, Country, About_Yourself, Password) VALUES (?, ?, ?,?,?, ?, ?, ?)`;
 
-        db.run(insertQuery, [fullname, email, company, dateofbirth, country, Aboutyourself, hashedPassword], async function (err) {
+        db.run(insertQuery, [fullname, email, company,gender, dateofbirth, country, Aboutyourself, hashedPassword], async function (err) {
             if (err) {
                 console.error("Database insertion error:", err);
                 return res.status(500).json({ message: "Error during signup" });
@@ -97,7 +114,7 @@ app.post("/signup", async (req, res) => {
                 from: process.env.EMAIL_USER,
                 to: email,
                 subject: "Welcome to HRM platform",
-                //message to be send
+                //message 
                 text: `Dear ${fullname},
 
 Welcome to the HRM Platform! We are excited to have you on board.
@@ -126,9 +143,10 @@ The HRM Platform `,
     }
 });
 
-
+// login API
 app.post("/login", async (req, res) => {
     const { email, password } = req.body;
+
 
     if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required" });
@@ -151,13 +169,11 @@ app.post("/login", async (req, res) => {
                 return res.status(401).json({ message: "Invalid email or password" });
             }
 
-            //Login Successfull mesage
 
             const mailOptions = {
                 from: process.env.EMAIL_USER,
                 to: email,
                 subject: "Login Successful to HRM Platform",
-                // Message to be sent
                 text: `Dear Empolyee,
             
 We are pleased to inform you that your login to the HRM Platform was successful.
@@ -170,23 +186,112 @@ The HRM Platform `,
             
             try {
                 const info = await transporter.sendMail(mailOptions);
-                console.log("Email sent successfully:", info.response);
+            
+                const currentTimeandDate = new Date();
+                const currentDate = currentTimeandDate.toLocaleDateString();
+                
+                const currentHours = currentTimeandDate.getHours();
+                const currentMinutes = currentTimeandDate.getMinutes();
+                
+                const onTimeStartHours = 9;  // inital time with minutes
+                const onTimeStartMinutes = 0;
+                
+                const lateCutoffHours = 9;  // late time cutoff begin from 9:1am to 9:30am
+                const lateCutoffMinutes = 30;
+                
+                const endOfDayHours = 13; // endday by 6:pm 
+                const endOfDayMinutes = 0;
+                
+                let EffectiveHours = "";
+                let GrossHours = "";
+                let ArrivalStatus = "";
+                let LeaveStatus = "";
+                let Log = "";
+                
+                if (currentHours === onTimeStartHours && currentMinutes === onTimeStartMinutes) {
+                    ArrivalStatus = "On Time";
+                    LeaveStatus = "No";
+                    EffectiveHours = "9:00 Hrs";
+                    GrossHours = "9:00 Hrs";  // condition for ontime
+                    Log = 'Yes';
+                } 
+                else if (
+                    (currentHours < onTimeStartHours) || 
+                    (currentHours === endOfDayHours && currentMinutes >= endOfDayMinutes) || 
+                    currentHours > endOfDayHours
+                ) {  
+                    ArrivalStatus = "-";
+                    LeaveStatus = "Yes";
+                    EffectiveHours = "0:00 Hrs";
+                    GrossHours = "0:00 Hrs";  //condition for Earlyhrs
+                    Log = 'EL';
+                } 
+                else if (
+                    (currentHours > onTimeStartHours || 
+                    (currentHours === onTimeStartHours && currentMinutes > onTimeStartMinutes)) &&
+                    (currentHours < lateCutoffHours || 
+                    (currentHours === lateCutoffHours && currentMinutes <= lateCutoffMinutes))
+                ) {
+                    const minutesLate = (currentHours - onTimeStartHours) * 60 + (currentMinutes - onTimeStartMinutes);
+                    ArrivalStatus = `${minutesLate} minute late`;
+                    LeaveStatus = "No";
+                    EffectiveHours = "9:00 Hrs";
+                    GrossHours = "9:00 Hrs";  // condition for late
+                    Log = 'No';
+                } 
+                else {
+                    ArrivalStatus = "-"; 
+                    LeaveStatus = 'No';
+                    EffectiveHours = "0:00 Hrs"; 
+                    GrossHours = "0:00 Hrs";  // condtion for Working hours
+                    Log = "WH";
+                }
+                
+
+                const insertQuery = `INSERT INTO AttendanceLog(WorkEmail,LogDate,LogTime,EffectiveHours,GrossHours,ArrivalStatus,LeaveStatus,Logstatus) VALUES (?,?,?,?,?,?,?,?)`;
+
+                db.run(insertQuery,[email,currentDate,currentTimeandDate.toLocaleTimeString(),EffectiveHours,GrossHours,ArrivalStatus,LeaveStatus,Log])
+            
                 const token = jwt.sign(
-                    { id: user.EmployeeID, email: user.WorkEmail },
+                    {
+                        id: user.EmployeeID,
+                        email: user.WorkEmail,
+                        issuedAt: {logDate:currentDate,logTime:currentTimeandDate.getTime()},
+                    },
                     process.env.JWT_SECRET,
                     { expiresIn: "1h" }
                 );
+
+                //Just for attendance status while login to send response
+                let attendanceStatus = ""
+                if(ArrivalStatus === '-' && LeaveStatus === 'No'){
+                    attendanceStatus = "WH"
+                }else if (ArrivalStatus === "-" && LeaveStatus === 'Yes'){
+                    attendanceStatus = "EL"
+                }else if(ArrivalStatus === 'On Time' && LeaveStatus === 'No' ){
+                    attendanceStatus = "Ontime"
+                }else{
+                    attendanceStatus = `Late by mintue ${ArrivalStatus}`
+                }
             
                 return res.status(200).json({
                     message: "Login successful",
                     token: token,
-                    user: {id: user.EmployeeID,fullname: user.FullName,email: user.WorkEmail,company: user.Company,
-                    },
+                    loginDateTime: {logDate:currentDate,logTime:currentTimeandDate.toLocaleTimeString()},
+                    attendanceStatus,
+                    user: {
+                        fullname: user.FullName,
+                        email: user.WorkEmail,
+                        company: user.Company
+                    }
                 });
+
+            
             } catch (emailError) {
                 console.error("Error sending email:", emailError);
                 res.status(500).json({ message: "Login successful, but email sending failed." });
             }
+            
             
         });
     } catch (error) {
@@ -195,13 +300,28 @@ The HRM Platform `,
     }
 });
 
-app.get("/employee", authenticatetoken, (req, res) => {
-    const userId = req.user.email; 
-    console.log(userId) 
+//attendance log fetch
 
+app.get('/attendancelog',authenticatetoken,(req,res) =>{
+    const usermail = req.user.email;
+    const query = `SELECT * FROM AttendanceLog WHERE WorkEmail = ? ORDER BY AttendanceLogID DESC `;
+
+    db.all(query,[usermail],(err,row) =>{
+        if(err){
+            return res.status(500).json({ message: "Error fetching attendance data" });
+        }
+        res.status(200).json({ attendanceLogStatus: row });
+
+    })
+
+})
+
+//Fetch employee using middleware auth
+app.get("/employee", authenticatetoken, (req, res) => {
+    const usermail = req.user.email; 
     const query = `SELECT * FROM Employee WHERE WorkEmail = ?`;
 
-    db.get(query, [userId  ], (err, row) => {
+    db.get(query, [usermail], (err, row) => {
         if (err) {
             console.error("Database retrieval error:", err);
             return res.status(500).json({ message: "Error fetching employee data" });
@@ -214,6 +334,23 @@ app.get("/employee", authenticatetoken, (req, res) => {
         res.status(200).json({ employee: row });
     });
 });
+
+
+app.post("/events", authenticatetoken, (req, res) => {
+    const { title, date, startTime, endTime, type } = req.body;
+    if (!title || !date || !startTime || !endTime || !type) {
+        return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const query = `INSERT INTO Events(title, date, start, end, type) VALUES (?, ?, ?, ?, ?)`;
+    db.run(query, [title, date, startTime, endTime, type], function (err) {
+        if (err) {
+            return res.status(500).json({ error: "Error while inserting events" });
+        }
+        return res.status(201).json({ message: "Event successfully inserted" });
+    });
+});
+
 
 
 app.listen(PORT, () => {
