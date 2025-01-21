@@ -48,6 +48,17 @@ const db = new sqlite3.Database("HRMdb.db", (err) => {
             FOREIGN KEY (WorkEmail) REFERENCES Employee(WorkEmail)
         )`);
 
+        db.run(`CREATE TABLE IF NOT EXISTS Events(
+            EventsID INTEGER PRIMARY KEY AUTOINCREMENT,
+            WorkEmail VARCHAR(32) NOT NULL,
+            title VARCHAR(32) NOT NULL,
+            Date DATE NOT NULL,
+            StartTime TIME NOT NULL,
+            EndTime TIME NOT NULL,
+            eventType TEXT NOT NULL,
+            FOREIGN KEY (WorkEmail) REFERENCES Employee(WorkEmail)
+            )`)
+
         
     }
     
@@ -197,9 +208,9 @@ The HRM Platform `,
                 const onTimeStartMinutes = 0;
                 
                 const lateCutoffHours = 9;  // late time cutoff begin from 9:1am to 9:30am
-                const lateCutoffMinutes = 30;
+                const lateCutoffMinutes =30;
                 
-                const endOfDayHours = 13; // endday by 6:pm 
+                const endOfDayHours = 18; // endday by 6:pm 
                 const endOfDayMinutes = 0;
                 
                 let EffectiveHours = "";
@@ -338,18 +349,35 @@ app.get("/employee", authenticatetoken, (req, res) => {
 
 app.post("/events", authenticatetoken, (req, res) => {
     const { title, date, startTime, endTime, type } = req.body;
-    if (!title || !date || !startTime || !endTime || !type) {
+    const usermail = req.user.email
+    if (!usermail ||!title || !date || !startTime || !endTime || !type) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
-    const query = `INSERT INTO Events(title, date, start, end, type) VALUES (?, ?, ?, ?, ?)`;
-    db.run(query, [title, date, startTime, endTime, type], function (err) {
+    const query = `INSERT INTO Events(WorkEmail,title, Date, startTime, EndTime, eventType) VALUES (?, ?, ?, ?, ?,?)`;
+    db.run(query, [usermail,title, date, startTime, endTime, type], function (err) {
         if (err) {
-            return res.status(500).json({ error: "Error while inserting events" });
+            console.error("Database insertion error:", err.message);
+            return res.status(500).json({ error: "Error while inserting event" });
         }
-        return res.status(201).json({ message: "Event successfully inserted" });
+
+        return res.status(201).json({ message: "Event successfully inserted",});
     });
 });
+
+app.get('/events',authenticatetoken,(req,res) =>{
+    const usermail = req.user.email 
+    console.log(usermail)
+    const query = `SELECT * FROM Events WHERE WorkEmail = ?`
+
+    db.all(query,[usermail],(err,rows) =>{
+        if(err){
+            return res.status(500).json({error:"Error While Fetch event"})
+        }
+        return res.status(200).json({events:rows})
+    })
+
+})
 
 
 
