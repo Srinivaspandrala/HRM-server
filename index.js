@@ -66,6 +66,7 @@ const db = new sqlite3.Database("HRMdb.db", (err) => {
 db.run('PRAGMA foreign_keys = ON',) // forgin key ON
 
 //mail transport and service,user and passkey used from env file
+//Mali id of sender detalis
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -125,18 +126,42 @@ app.post("/signup", async (req, res) => {
                 from: process.env.EMAIL_USER,
                 to: email,
                 subject: "Welcome to HRM platform",
-                //message 
-                text: `Dear ${fullname},
+                html: `
+    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://static.vecteezy.com/system/resources/previews/007/263/716/non_2x/hrm-letter-logo-design-on-white-background-hrm-creative-initials-letter-logo-concept-hrm-letter-design-vector.jpg" 
+                alt="Welcome Image" 
+                style="max-width: 100px; height: auto; border-radius: 50%;" />
+        </div>
+        <p style="font-size: 18px; color: #333; text-align: center; font-weight: bold; margin: 0;">
+            Welcome to the HRM Platform!
+        </p>
+        <p style="font-size: 16px; color: #555; text-align: center; margin:10px 75% 10px 0px;">
+            Dear <strong>${fullname}</strong>,
+        </p>
+        <p style="font-size: 14px; line-height: 1.6; color: #666; text-align: justify;">
+            We are thrilled to have you on board. Below are your login credentials:
+        </p>
+        <div style="background: #f1f1f1; padding: 15px; border-radius: 5px; margin: 20px 0; font-size: 14px;">
+            <p style="margin: 0;"><strong>Username:</strong> ${email}</p>
+            <p style="margin: 0;"><strong>Password:</strong> ${randomPassword}</p>
+        </div>
+        <p style="font-size: 14px; color: #666; text-align: justify; margin-bottom: 20px;">
+            Please log in and change your password as soon as possible for enhanced security.
+        </p>
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="http://localhost:3000/" 
+               style="display: inline-block; padding: 10px 20px; background: #4CAF50; color: #fff; text-decoration: none; font-size: 16px; border-radius: 5px; font-weight: bold;">
+                Login to HRM Platform
+            </a>
+        </div>
+        <p style="font-size: 14px; color: #999; text-align: center; margin-top: 20px;">
+            Best regards,<br>
+            <strong>The HRM Platform Team</strong>
+        </p>
+    </div>
+`
 
-Welcome to the HRM Platform! We are excited to have you on board.
-
-Here are your login details:
-Username: ${email}
-System Generated Password: ${randomPassword}
-Please log in and change your password as soon as possible.
-
-Best regards,  
-The HRM Platform `,
             };
 
             try {
@@ -185,14 +210,35 @@ app.post("/login", async (req, res) => {
                 from: process.env.EMAIL_USER,
                 to: email,
                 subject: "Login Successful to HRM Platform",
-                text: `Dear Empolyee,
-            
-We are pleased to inform you that your login to the HRM Platform was successful.
-            
-If this login was not performed by you, please reset your password immediately or contact support .
-            
-Best regards,  
-The HRM Platform `,
+                html: `
+    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 4px 6px #000000;">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="https://static.vecteezy.com/system/resources/previews/007/263/716/non_2x/hrm-letter-logo-design-on-white-background-hrm-creative-initials-letter-logo-concept-hrm-letter-design-vector.jpg" 
+                alt="Welcome Image" 
+                style="max-width: 100px; height: auto; border-radius: 50%;" />
+        </div>
+        <p style="font-size: 18px; color: #333; text-align: center; font-weight: bold; margin: 0;">
+            Login Successful to HRM Platform
+        </p>
+        <p style="font-size: 16px; color: #555; text-align: center; margin: 10px 80% 20px 0px;">
+            Dear <strong>Employee</strong>,
+        </p>
+        <p style="font-size: 14px; line-height: 1.6; color: #666; text-align: justify;">
+            We are pleased to inform you that your login to the HRM Platform was successful. If this login was not performed by you, please reset your password immediately or contact support.
+        </p>
+        <p style="font-size: 14px; color: #555; margin-top: 20px;">
+            Best regards,<br>
+            <strong>The HRM Platform Team</strong>
+        </p>
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="http://localhost:3000/forgotpassword" 
+               style="display: inline-block; padding: 10px 20px; background: #4CAF50; color: #fff; text-decoration: none; font-size: 16px; border-radius: 5px; font-weight: bold;">
+                Reset Password
+            </a>
+        </div>
+    </div>
+`
+,
             };
             
             try {
@@ -308,6 +354,86 @@ The HRM Platform `,
     } catch (error) {
         console.error("Error during login:", error);
         res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+//Forgot password API
+app.post('/forgotpassword', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+    }
+
+    const randomPassword = generateRandomPassword();
+
+    try {
+        const hashedPassword = await bcrypt.hash(randomPassword, 8);
+
+        const checkQuery = `SELECT * FROM Employee WHERE WorkEmail = ?`;
+        db.get(checkQuery, [email], (err, row) => {
+            if (err) {
+                console.error("Error checking email:", err);
+                return res.status(500).json({ message: "An error occurred while checking the email" });
+            }
+
+            if (!row) {
+                return res.status(404).json({ message: "Email not found" });
+            }
+
+            const updateQuery = `UPDATE Employee SET Password = ? WHERE WorkEmail = ?`;
+            db.run(updateQuery, [hashedPassword, email], function (err) {
+                if (err) {
+                    console.error("Database update error:", err);
+                    return res.status(500).json({ message: "Failed to update password" });
+                }
+                res.status(200).json({ message: "Password has been reset successfully" });
+                const mailOptions = {
+                    from: process.env.EMAIL_USER,
+                    to: email,
+                    subject: "Password Reset for HRM Platform",
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); background-color: #f9f9f9;">
+                            <div style="text-align: center; margin-bottom: 20px;">
+                                <img src="https://static.vecteezy.com/system/resources/previews/007/263/716/non_2x/hrm-letter-logo-design-on-white-background-hrm-creative-initials-letter-logo-concept-hrm-letter-design-vector.jpg" 
+                                    alt="HRM Platform Logo" 
+                                    style="max-width: 100px; height: auto; border-radius: 50%; margin-bottom: 10px;" />
+                                <h2 style="color: #333;">Password Reset Successful</h2>
+                            </div>
+                            <div style="color: #555; line-height: 1.6;">
+                                <p>Dear <strong>Employee</strong>,</p>
+                                <p>Your password for the HRM Platform has been successfully reset. Please use the following temporary password to log in:</p>
+                                <div style="text-align: center; margin: 20px 0; padding: 10px; background-color: #e8f4fc; color: #007bff; font-weight: bold; border-radius: 5px;">
+                                    ${randomPassword}
+                                </div>
+                                <p>We recommend changing your password immediately after logging in for security purposes.</p>
+                                <p>If you did not request this password reset, please contact our support team at <a href="mailto:support@hrmplatform.com" style="color: #007bff; text-decoration: none;">support@hrmplatform.com</a>.</p>
+                            </div>
+                            <div style="margin-top: 30px; text-align: center;">
+                                <a href="https://hrmplatform.com/login" 
+                                style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: #fff; text-decoration: none; border-radius: 5px; font-size: 16px;">
+                                    Log In
+                                </a>
+                            </div>
+                            <footer style="margin-top: 40px; text-align: center; font-size: 12px; color: #aaa;">
+                                <p>© 2025 HRM Platform. All rights reserved.</p>
+                            </footer>
+                        </div>
+                    `
+                };
+
+                transporter.sendMail(mailOptions, (error, info) => {
+                    if (error) {
+                        console.error("Error sending email:", error);
+                    } else {
+                        console.log("Password reset email sent:", info.response);
+                    }
+                });
+            });
+        });
+    } catch (err) {
+        console.error("Unexpected error:", err);
+        res.status(500).json({ message: "An unexpected error occurred" });
     }
 });
 
