@@ -42,7 +42,7 @@ const db = new sqlite3.Database("HRMdb.db", (err) => {
             LogTime TIME NOT NULL,
             EffectiveHours TEXT NOT NULL,
             GrossHours TEXT NOT NULL,
-            ArrivalStatus TEXT NOT NULL,
+            ArrivalStatus TEXT
             LeaveStatus TEXT NOT NULL,
             Logstatus TEXT NOT NUll,
             FOREIGN KEY (WorkEmail) REFERENCES Employee(WorkEmail)
@@ -183,7 +183,6 @@ app.post("/signup", async (req, res) => {
 app.post("/login", async (req, res) => {
     const { email, password } = req.body;
 
-
     if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required" });
     }
@@ -197,165 +196,183 @@ app.post("/login", async (req, res) => {
             }
 
             if (!user) {
-                return res.status(401).json({ message: "Invalid email or password" });
+                return res.status(401).json({ message: "Invalid email" });
             }
 
             const isPasswordValid = await bcrypt.compare(password, user.Password);
             if (!isPasswordValid) {
-                return res.status(401).json({ message: "Invalid email or password" });
+                return res.status(401).json({ message: "Invalid password" });
             }
 
-
+            // Mail Options for Success Login
             const mailOptions = {
                 from: process.env.EMAIL_USER,
                 to: email,
                 subject: "Login Successful to HRM Platform",
                 html: `
-    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 4px 6px #000000;">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <img src="https://static.vecteezy.com/system/resources/previews/007/263/716/non_2x/hrm-letter-logo-design-on-white-background-hrm-creative-initials-letter-logo-concept-hrm-letter-design-vector.jpg" 
-                alt="Welcome Image" 
-                style="max-width: 100px; height: auto; border-radius: 50%;" />
-        </div>
-        <p style="font-size: 18px; color: #333; text-align: center; font-weight: bold; margin: 0;">
-            Login Successful to HRM Platform
-        </p>
-        <p style="font-size: 16px; color: #555; text-align: center; margin: 10px 80% 20px 0px;">
-            Dear <strong>Employee</strong>,
-        </p>
-        <p style="font-size: 14px; line-height: 1.6; color: #666; text-align: justify;">
-            We are pleased to inform you that your login to the HRM Platform was successful. If this login was not performed by you, please reset your password immediately or contact support.
-        </p>
-        <p style="font-size: 14px; color: #555; margin-top: 20px;">
-            Best regards,<br>
-            <strong>The HRM Platform Team</strong>
-        </p>
-        <div style="text-align: center; margin-top: 20px;">
-            <a href="http://localhost:3000/forgotpassword" 
-               style="display: inline-block; padding: 10px 20px; background: #4CAF50; color: #fff; text-decoration: none; font-size: 16px; border-radius: 5px; font-weight: bold;">
-                Reset Password
-            </a>
-        </div>
-    </div>
-`
-,
+                <div style="font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 4px 6px #000000;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <img src="https://static.vecteezy.com/system/resources/previews/007/263/716/non_2x/hrm-letter-logo-design-on-white-background-hrm-creative-initials-letter-logo-concept-hrm-letter-design-vector.jpg" 
+                            alt="Welcome Image" 
+                            style="max-width: 100px; height: auto; border-radius: 50%;" />
+                    </div>
+                    <p style="font-size: 18px; color: #333; text-align: center; font-weight: bold; margin: 0;">
+                        Login Successful to HRM Platform
+                    </p>
+                    <p style="font-size: 16px; color: #555; text-align: center; margin: 10px 80% 20px 0px;">
+                        Dear <strong>Employee</strong>,
+                    </p>
+                    <p style="font-size: 14px; line-height: 1.6; color: #666; text-align: justify;">
+                        We are pleased to inform you that your login to the HRM Platform was successful. If this login was not performed by you, please reset your password immediately or contact support.
+                    </p>
+                    <p style="font-size: 14px; color: #555; margin-top: 20px;">
+                        Best regards,<br>
+                        <strong>The HRM Platform Team</strong>
+                    </p>
+                    <div style="text-align: center; margin-top: 20px;">
+                        <a href="http://localhost:3000/forgotpassword" 
+                           style="display: inline-block; padding: 10px 20px; background: #4CAF50; color: #fff; text-decoration: none; font-size: 16px; border-radius: 5px; font-weight: bold;">
+                            Reset Password
+                        </a>
+                    </div>
+                </div>
+                `,
             };
-            
+
             try {
                 const info = await transporter.sendMail(mailOptions);
-            
+
                 const currentTimeandDate = new Date();
                 const currentDate = currentTimeandDate.toLocaleDateString();
-                
-                const currentHours = currentTimeandDate.getHours();
-                const currentMinutes = currentTimeandDate.getMinutes();
-                
-                const onTimeStartHours = 9;  // inital time with minutes
-                const onTimeStartMinutes = 0;
-                
-                const lateCutoffHours = 9;  // late time cutoff begin from 9:1am to 9:30am
-                const lateCutoffMinutes =30;
-                
-                const endOfDayHours = 18; // endday by 6:pm 
+                const currentTime = currentTimeandDate.toLocaleTimeString();
+
+                // Time thresholds
+                const onTimeStartHours = 9; // Start of workday
+                const lateCutoffHours = 9; // Late cutoff (9:30 AM)
+                const lateCutoffMinutes = 30;
+                const endOfDayHours = 18; // End of workday
                 const endOfDayMinutes = 0;
-                
+
+                let ArrivalStatus = '';
+                let LeaveStatus = "";
                 let EffectiveHours = "";
                 let GrossHours = "";
-                let ArrivalStatus = "";
-                let LeaveStatus = "";
                 let Log = "";
-                
-                if (currentHours === onTimeStartHours && currentMinutes === onTimeStartMinutes) {
+
+                if (
+                    currentTimeandDate.getHours() === onTimeStartHours &&
+                    currentTimeandDate.getMinutes() === 0
+                ) {
                     ArrivalStatus = "On Time";
                     LeaveStatus = "No";
                     EffectiveHours = "9:00 Hrs";
-                    GrossHours = "9:00 Hrs";  // condition for ontime
-                    Log = 'Yes';
-                } 
-                else if (
-                    (currentHours < onTimeStartHours) || 
-                    (currentHours === endOfDayHours && currentMinutes >= endOfDayMinutes) || 
-                    currentHours > endOfDayHours
-                ) {  
-                    ArrivalStatus = "-";
+                    GrossHours = "9:00 Hrs";
+                    Log = "Yes";
+                } else if (
+                    currentTimeandDate.getHours() > endOfDayHours ||
+                    (currentTimeandDate.getHours() === endOfDayHours &&
+                        currentTimeandDate.getMinutes() > endOfDayMinutes)
+                ) {
+                    ArrivalStatus = null;
                     LeaveStatus = "Yes";
                     EffectiveHours = "0:00 Hrs";
-                    GrossHours = "0:00 Hrs";  //condition for Earlyhrs
-                    Log = 'EL';
-                } 
-                else if (
-                    (currentHours > onTimeStartHours || 
-                    (currentHours === onTimeStartHours && currentMinutes > onTimeStartMinutes)) &&
-                    (currentHours < lateCutoffHours || 
-                    (currentHours === lateCutoffHours && currentMinutes <= lateCutoffMinutes))
+                    GrossHours = "0:00 Hrs";
+                    Log = "EL";
+                } else if (
+                    (currentTimeandDate.getHours() > onTimeStartHours ||
+                        (currentTimeandDate.getHours() === onTimeStartHours &&
+                            currentTimeandDate.getMinutes() > 0)) &&
+                    (currentTimeandDate.getHours() < lateCutoffHours ||
+                        (currentTimeandDate.getHours() === lateCutoffHours &&
+                            currentTimeandDate.getMinutes() <= lateCutoffMinutes))
                 ) {
-                    const minutesLate = (currentHours - onTimeStartHours) * 60 + (currentMinutes - onTimeStartMinutes);
+                    const minutesLate =
+                        (currentTimeandDate.getHours() - onTimeStartHours) * 60 +
+                        (currentTimeandDate.getMinutes() - 0);
                     ArrivalStatus = `${minutesLate} minute late`;
                     LeaveStatus = "No";
                     EffectiveHours = "9:00 Hrs";
-                    GrossHours = "9:00 Hrs";  // condition for late
-                    Log = 'No';
-                } 
-                else {
-                    ArrivalStatus = "-"; 
-                    LeaveStatus = 'No';
-                    EffectiveHours = "0:00 Hrs"; 
-                    GrossHours = "0:00 Hrs";  // condtion for Working hours
+                    GrossHours = "9:00 Hrs";
+                    Log = "No";
+                } else {
+                    ArrivalStatus = null;
+                    LeaveStatus = "No";
+                    EffectiveHours = "0:00 Hrs";
+                    GrossHours = "0:00 Hrs";
                     Log = "WH";
                 }
-                
 
-                const insertQuery = `INSERT INTO AttendanceLog(WorkEmail,LogDate,LogTime,EffectiveHours,GrossHours,ArrivalStatus,LeaveStatus,Logstatus) VALUES (?,?,?,?,?,?,?,?)`;
+                const insertQuery = `INSERT INTO AttendanceLog(WorkEmail, LogDate, LogTime, EffectiveHours, GrossHours, ArrivalStatus, LeaveStatus, Logstatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+                db.run(
+                    insertQuery,
+                    [
+                        email,
+                        currentDate,
+                        currentTime,
+                        EffectiveHours,
+                        GrossHours,
+                        ArrivalStatus,
+                        LeaveStatus,
+                        Log,
+                    ],
+                    (err) => {
+                        if (err) {
+                            console.error("Database error during attendance log insert:", err);
+                        }
+                    }
+                );
 
-                db.run(insertQuery,[email,currentDate,currentTimeandDate.toLocaleTimeString(),EffectiveHours,GrossHours,ArrivalStatus,LeaveStatus,Log])
-            
+                // JWT Token generation
                 const token = jwt.sign(
                     {
                         id: user.EmployeeID,
                         email: user.WorkEmail,
-                        issuedAt: {logDate:currentDate,logTime:currentTimeandDate.getTime()},
+                        issuedAt: currentTime,
                     },
                     process.env.JWT_SECRET,
                     { expiresIn: "1h" }
                 );
 
-                //Just for attendance status while login to send response
-                let attendanceStatus = ""
-                if(ArrivalStatus === '-' && LeaveStatus === 'No'){
-                    attendanceStatus = "WH"
-                }else if (ArrivalStatus === "-" && LeaveStatus === 'Yes'){
-                    attendanceStatus = "EL"
-                }else if(ArrivalStatus === 'On Time' && LeaveStatus === 'No' ){
-                    attendanceStatus = "Ontime"
-                }else{
-                    attendanceStatus = `Late by mintue ${ArrivalStatus}`
-                }
-            
+                // Attendance status response
+                const attendanceStatus =
+                    ArrivalStatus === "-" && LeaveStatus === "No"
+                        ? "WH"
+                        : ArrivalStatus === "-" && LeaveStatus === "Yes"
+                        ? "EL"
+                        : ArrivalStatus === "On Time" && LeaveStatus === "No"
+                        ? "On Time"
+                        : `Late by ${ArrivalStatus}`;
+
                 return res.status(200).json({
-                    message: "Login successful",
-                    token: token,
-                    loginDateTime: {logDate:currentDate,logTime:currentTimeandDate.toLocaleTimeString()},
-                    attendanceStatus,
                     user: {
                         fullname: user.FullName,
                         email: user.WorkEmail,
-                        company: user.Company
-                    }
-                });
+                        company: user.Company,
+                        logDate: currentDate,
+                        logTime: currentTime,
+                        attendanceStatus,
+                        message: "Login successful",
+                        token: token,
 
-            
+                    },
+                });
             } catch (emailError) {
                 console.error("Error sending email:", emailError);
-                res.status(500).json({ message: "Login successful, but email sending failed." });
+                return res
+                    .status(500)
+                    .json({ message: "Login successful, but email sending failed." });
             }
-            
-            
         });
     } catch (error) {
         console.error("Error during login:", error);
-        res.status(500).json({ message: "Internal server error" });
+        return res.status(500).json({ message: "Internal server error" });
     }
 });
+
+//logout API
+
+
+
 
 //Forgot password API
 app.post('/forgotpassword', async (req, res) => {
@@ -453,6 +470,19 @@ app.get('/attendancelog',authenticatetoken,(req,res) =>{
 
 })
 
+app.get('/attendancereq',authenticatetoken,(req,res) =>{
+    const usermail = req.user.email;
+    const query = `SELECT * FROM AttendanceLog WHERE WorkEmail = ? and Logstatus = "No"`;
+
+    db.all(query,[usermail],(err,row) =>{
+        if(err){
+            return res.status(500).json({message:"Error Fetech attendance data"})
+        }
+        res.status(200).json({attendancerquest:row})
+
+    })
+})
+
 //Fetch employee using middleware auth
 app.get("/employee", authenticatetoken, (req, res) => {
     const usermail = req.user.email; 
@@ -467,8 +497,9 @@ app.get("/employee", authenticatetoken, (req, res) => {
         if (!row) {
             return res.status(404).json({ message: "Employee not found" });
         }
+        const {Password, ...filteredRow } = row;
 
-        res.status(200).json({ employee: row });
+        res.status(200).json({ employee: filteredRow });
     });
 });
 
@@ -505,7 +536,71 @@ app.get('/events',authenticatetoken,(req,res) =>{
 
 })
 
+app.delete('/events/:id', authenticatetoken, (req, res) => {
+    const usermail = req.user.email; 
+    const eventId = req.params.id; 
 
+    const query = `DELETE FROM Events WHERE WorkEmail = ? AND EventsID = ?`;
+
+    db.run(query, [usermail, eventId], function (err) {
+        if (err) {
+            return res.status(500).json({ error: "Error while deleting event" });
+        }
+
+        if (this.changes === 0) {
+            return res.status(404).json({ message: "Event not found or not authorized to delete" });
+        }
+
+        return res.status(200).json({ message: "Event deleted successfully" });
+    });
+});
+
+// Change Password API
+app.post('/changepassword', authenticatetoken, async (req, res) => {
+    const { oldPassword, newPassword } = req.body;
+    const usermail = req.user.email;
+
+    if (!oldPassword || !newPassword) {
+        return res.status(400).json({ message: "Old password and new password are required" });
+    }
+
+    if (oldPassword === newPassword) {
+        return res.status(400).json({ message: "New password cannot be the same as the old password" });
+    }
+
+    try {
+        const query = `SELECT Password FROM Employee WHERE WorkEmail = ?`;
+        db.get(query, [usermail], async (err, user) => {
+            if (err) {
+                console.error("Database error:", err);
+                return res.status(500).json({ message: "Internal server error" });
+            }
+
+            if (!user) {
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            const isPasswordValid = await bcrypt.compare(oldPassword, user.Password);
+            if (!isPasswordValid) {
+                return res.status(401).json({ message: "Old password is incorrect" });
+            }
+
+            const hashedNewPassword = await bcrypt.hash(newPassword, 8);
+            const updateQuery = `UPDATE Employee SET Password = ? WHERE WorkEmail = ?`;
+            db.run(updateQuery, [hashedNewPassword, usermail], function (err) {
+                if (err) {
+                    console.error("Database update error:", err);
+                    return res.status(500).json({ message: "Failed to update password" });
+                }
+
+                return res.status(200).json({ message: "Password changed successfully" });
+            });
+        });
+    } catch (error) {
+        console.error("Unexpected error:", error);
+        return res.status(500).json({ message: "An unexpected error occurred" });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
